@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tally</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #fff; --ink: #1d1c1a; --muted: #77736b; --line: #e6e3dc;
+    --accent: #2f5d50; --flag: #c2402f; --flag-bg: #fbeae6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--muted); font-weight: 400; font-size: 15px; margin-left: 8px; white-space: nowrap; }
+  #reset { white-space: nowrap; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat small { color: var(--muted); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat b { font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat.flag b { color: var(--flag); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 20px; }
+  form { display: grid; grid-template-columns: 120px 1fr 140px 110px auto; gap: 8px; padding: 12px; }
+  input, select, button { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: inherit; min-width: 0; }
+  button { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; }
+  button.ghost { background: none; color: var(--muted); border: none; padding: 4px 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 14px; text-align: left; border-top: 1px solid var(--line); }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; border-top: none; }
+  td.amt, th.amt { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.flagged td { background: var(--flag-bg); }
+  .badge { display: inline-block; font-size: 11px; color: var(--flag); border: 1px solid var(--flag); border-radius: 99px; padding: 1px 8px; margin-left: 8px; white-space: nowrap; }
+  .cats { padding: 14px 16px; display: grid; gap: 8px; }
+  .cat { display: grid; grid-template-columns: 110px 1fr 80px; gap: 12px; align-items: center; font-size: 13px; }
+  .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .cat span:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; }
+  @media (max-width: 640px) {
+    form { grid-template-columns: 1fr 1fr; }
+    .stats { grid-template-columns: 1fr; }
+    td:nth-child(3), th:nth-child(3) { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tally <span id="month"></span></h1>
+    <button class="ghost" id="reset">Reset demo data</button>
+  </header>
+
+  <section class="stats">
+    <div class="stat"><small>Spent this month</small><b id="spent"></b></div>
+    <div class="stat"><small>Budget left</small><b id="left"></b></div>
+    <div class="stat flag"><small>Doesn't add up</small><b id="flags"></b></div>
+  </section>
+
+  <section class="card">
+    <form id="add">
+      <input type="date" name="date" required>
+      <input name="merchant" placeholder="Merchant" required>
+      <select name="category"></select>
+      <input name="amount" type="number" step="0.01" min="0" placeholder="0.00" required>
+      <button>Add</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <table>
+      <thead><tr><th>Date</th><th>Merchant</th><th>Category</th><th class="amt">Amount</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <section class="card cats" id="cats"></section>
+
+  <footer><span>Stored in your browser. No account, no server.</span><span>Budget $2,400</span></footer>
+</main>
+<script>
+const BUDGET = 2400;
+const CATEGORIES = ["Groceries", "Dining", "Transport", "Utilities", "Travel", "Subscriptions"];
+const KEY = "tally.v1";
+
+const DEMO = [
+  ["2026-10-02", "Rent share – utilities", "Utilities", 120.00],
+  ["2026-10-03", "Coffee Co.", "Dining", 4.50],
+  ["2026-10-05", "Northline Transit", "Transport", 23.17],
+  ["2026-10-07", "Fresh Market", "Groceries", 64.10],
+  ["2026-10-13", "Northline Transit", "Transport", 23.17],
+  ["2026-10-09", "Streamly", "Subscriptions", 15.99],
+  ["2026-10-11", "Fresh Market", "Groceries", 86.42],
+  ["2026-10-12", "Fresh Market", "Groceries", 86.42],
+  ["2026-10-14", "Noodle Bar", "Dining", 18.75],
+  ["2026-10-16", "Skyway Air", "Travel", 312.00],
+  ["2026-10-18", "Coffee Co.", "Dining", 4.50],
+  ["2026-10-20", "Streamly", "Subscriptions", 15.99],
+  ["2026-10-22", "Corner Taxi", "Transport", 148.00],
+  ["2026-10-25", "Fresh Market", "Groceries", 58.30],
+  ["2026-10-27", "Coffee Co.", "Dining", 5.25],
+].map(([date, merchant, category, amount], i) => ({ id: i + 1, date, merchant, category, amount }));
+
+let items;
+const demoCopy = () => DEMO.map(i => ({ ...i }));
+try { items = JSON.parse(localStorage.getItem(KEY)) || demoCopy(); } catch { items = demoCopy(); }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch {} };
+
+const money = n => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+const days = (a, b) => Math.abs(new Date(a) - new Date(b)) / 864e5;
+
+// A row doesn't add up if it repeats a recent charge, or sits far above its category's usual spend.
+function flagFor(item) {
+  const dup = items.some(o => o.id !== item.id && o.merchant === item.merchant &&
+    o.amount === item.amount && days(o.date, item.date) <= 3 && o.date < item.date);
+  if (dup) return "possible duplicate";
+  const same = items.filter(o => o.category === item.category && o.id !== item.id).map(o => o.amount).sort((a, b) => a - b);
+  if (same.length >= 2) {
+    const median = same[Math.floor(same.length / 2)];
+    if (item.amount > median * 5) return "unusual amount";
+  }
+  return null;
+}
+
+function render() {
+  const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  const spent = items.reduce((s, i) => s + i.amount, 0);
+  const flagged = sorted.filter(flagFor);
+  const latest = sorted[0] ? new Date(sorted[0].date + "T12:00") : new Date();
+  document.getElementById("month").textContent = latest.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  document.getElementById("spent").textContent = money(spent);
+  document.getElementById("left").textContent = money(BUDGET - spent);
+  document.getElementById("flags").textContent = flagged.length;
+
+  document.getElementById("rows").innerHTML = sorted.map(i => {
+    const flag = flagFor(i);
+    const d = new Date(i.date + "T12:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `<tr class="${flag ? "flagged" : ""}">
+      <td>${d}</td>
+      <td>${esc(i.merchant)}${flag ? `<span class="badge">${flag}</span>` : ""}</td>
+      <td>${i.category}</td>
+      <td class="amt">${money(i.amount)}</td>
+      <td><button class="ghost" data-del="${i.id}" aria-label="Delete">×</button></td>
+    </tr>`;
+  }).join("");
+
+  const totals = CATEGORIES.map(c => [c, items.filter(i => i.category === c).reduce((s, i) => s + i.amount, 0)]);
+  const max = Math.max(...totals.map(t => t[1]), 1);
+  document.getElementById("cats").innerHTML = totals.map(([c, t]) =>
+    `<div class="cat"><span>${c}</span><div class="bar"><i style="width:${(t / max) * 100}%"></i></div><span>${money(t)}</span></div>`).join("");
+}
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+const form = document.getElementById("add");
+form.category.innerHTML = CATEGORIES.map(c => `<option>${c}</option>`).join("");
+form.date.value = new Date().toISOString().slice(0, 10);
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const f = new FormData(form);
+  items.push({ id: Date.now(), date: f.get("date"), merchant: f.get("merchant").trim(), category: f.get("category"), amount: +(+f.get("amount")).toFixed(2) });
+  save(); render();
+  form.merchant.value = ""; form.amount.value = "";
+});
+document.getElementById("rows").addEventListener("click", e => {
+  const id = e.target.dataset.del;
+  if (!id) return;
+  items = items.filter(i => i.id !== +id);
+  save(); render();
+});
+document.getElementById("reset").onclick = () => { items = demoCopy(); save(); render(); };
+
+render();
+</script>
+</body>
+</html>
